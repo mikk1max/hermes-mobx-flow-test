@@ -117,6 +117,13 @@ export class TestStore {
         const defFn = (label: string) => () => store.log.push(`  [DEFAULT ${label}]`)
         const extCb = (label: string) => (msg: string) => store.log.push(`  ⚪ ${label} fired: ${msg}`)
 
+        // Print compiled source of E vs F generators to see if Babel output differs
+        const _srcE = function* (_v: string, _cb: (msg: string) => void = defFn('E_SRC')) { yield null }
+        const _srcF = function* (this: any, _v: string, _cb: (msg: string) => void = defFn('F_SRC')) { yield null }
+        console.log('=== E generator source ===\n', (_srcE as any).toString())
+        console.log('=== F generator source ===\n', (_srcF as any).toString())
+        store.log.push('(see console for E vs F compiled source)')
+
         // D) Babel compiles "= () => {}" inside a generator — direct call, no MobX
         store.log.push('D) Babel default param, direct call (no MobX):')
         function* genD(_value: string, onSuccess: (msg: string) => void = defFn('D')) {
