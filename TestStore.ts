@@ -117,17 +117,8 @@ export class TestStore {
         const defFn = (label: string) => () => store.log.push(`  [DEFAULT ${label}]`)
         const extCb = (label: string) => (msg: string) => store.log.push(`  ⚪ ${label} fired: ${msg}`)
 
-        // Log compiled source ON SCREEN — web vs iOS bundle may differ
-        const _srcE = function* (_v: string, _cb: (msg: string) => void = defFn('E_SRC')) { yield null }
-        const _srcF = function* (this: any, _v: string, _cb: (msg: string) => void = defFn('F_SRC')) { yield null }
-        const _srcG = function* (_v: string, _cb: (msg: string) => void = defFn('G_SRC')) { yield null }
-        store.log.push('--- compiled source ---')
-        store.log.push('E: ' + (_srcE as any).toString().replace(/\s+/g, ' '))
-        store.log.push('F: ' + (_srcF as any).toString().replace(/\s+/g, ' '))
-        store.log.push('G: ' + (_srcG as any).toString().replace(/\s+/g, ' '))
-
-        // D) Babel compiles "= () => {}" inside a generator — direct call, no MobX
-        store.log.push('D) Babel default param, direct call (no MobX):')
+        // D) default param in generator, direct call — baseline
+        store.log.push('D) default param, direct call — no MobX, no this:')
         function* genD(_value: string, onSuccess: (msg: string) => void = defFn('D')) {
             yield new Promise(resolve => setTimeout(resolve, 50))
             onSuccess('ok')
@@ -136,8 +127,8 @@ export class TestStore {
         itD.next().value.then(() => {
             itD.next()
 
-            // E) same generator through real MobX flow() — no `this:` param
-            store.log.push('E) Babel default param, via MobX flow() (no this:):')
+            // E) via MobX flow(), no `this:` — still works
+            store.log.push('E) default param + flow(), no this: — works')
             const flowedE = flow(function* (_value: string, onSuccess: (msg: string) => void = defFn('E')) {
                 yield new Promise(resolve => setTimeout(resolve, 50))
                 onSuccess('ok')
@@ -145,8 +136,8 @@ export class TestStore {
             ;(flowedE as any)('test', extCb('E'))
 
             setTimeout(() => {
-                // F) flow() WITH `this: TestStore` AND .bind(this)
-                store.log.push('F) flow() + this: TypeScript + .bind(this):')
+                // F) THE BUG: `this:` shifts Babel's arguments index by 1
+                store.log.push('F) BUG: default param + flow() + this: + bind:')
                 const flowedF = flow(function* (this: TestStore, _value: string, onSuccess: (msg: string) => void = defFn('F')) {
                     yield new Promise(resolve => setTimeout(resolve, 50))
                     onSuccess('ok')
@@ -154,8 +145,8 @@ export class TestStore {
                 ;(flowedF as any)('test', extCb('F'))
 
                 setTimeout(() => {
-                    // G) flow() WITHOUT `this:` BUT WITH .bind(this) — isolates .bind() as the trigger
-                    store.log.push('G) flow() + NO this: + .bind(this) — is .bind() the trigger?')
+                    // G) control: bind() alone without `this:` — works fine
+                    store.log.push('G) control: bind() alone, no this: — works')
                     const flowedG = flow(function* (_value: string, onSuccess: (msg: string) => void = defFn('G')) {
                         yield new Promise(resolve => setTimeout(resolve, 50))
                         onSuccess('ok')
@@ -164,17 +155,29 @@ export class TestStore {
                 }, 400)
 
                 setTimeout(() => {
-                    // H) F but called with 3 args: ('test', undefined, extCb)
-                    // If Babel shifted onSuccess to arguments[2] due to `this:`,
-                    // passing extCb at index 2 should fix it → confirms index-shift theory
-                    store.log.push('H) F called with 3 args (skip arg[1], put cb at arg[2]):')
-                    store.log.push('   if H fires → Babel shifted onSuccess to arguments[2]')
+                    // H) smoking gun: same as F but callback at arg[2]
+                    // proves Babel shifted onSuccess index to 2 because of `this:`
+                    store.log.push('H) same as F, cb at arg[2] instead of arg[1]:')
+                    store.log.push('   → proves Babel generated arguments[2] for onSuccess')
                     const flowedH = flow(function* (this: TestStore, _value: string, onSuccess: (msg: string) => void = defFn('H')) {
                         yield new Promise(resolve => setTimeout(resolve, 50))
                         onSuccess('ok')
                     }).bind(this)
                     ;(flowedH as any)('test', undefined, extCb('H'))
                 }, 600)
+
+                setTimeout(() => {
+                    // I) FIXED: same pattern as F but `??` instead of `= () => {}`
+                    // avoids the default param transform → Babel never emits arguments[] check
+                    store.log.push('I) FIXED version of F (??  instead of = () => {}):')
+                    store.log.push('   → no default param transform → no index shift')
+                    const flowedI = flow(function* (this: TestStore, _value: string, onSuccess?: (msg: string) => void) {
+                        onSuccess = onSuccess ?? defFn('I — should not fire')
+                        yield new Promise(resolve => setTimeout(resolve, 50))
+                        onSuccess('ok')
+                    }).bind(this)
+                    ;(flowedI as any)('test', extCb('I'))
+                }, 800)
             }, 200)
         })
     }

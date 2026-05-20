@@ -102,6 +102,10 @@ export default observer(function App() {
                         line.includes('── FIXED') && s.sectionFixed,
                         line.includes('── STANDALONE') && s.sectionStandalone,
                         line.includes('── MINIMAL') && s.sectionMinimal,
+                        line.includes('BUG:') && s.red_text,
+                        line.includes('FIXED version') && s.green_text,
+                        line.includes('smoking gun') && s.yellow_text,
+                        line.startsWith('⚪ I') && s.green_text,
                     ]}>
                         {line}
                     </Text>
