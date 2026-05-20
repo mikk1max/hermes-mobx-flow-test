@@ -106,6 +106,29 @@ export class TestStore {
         })()
     }).bind(this)
 
+    // ─── MINIMAL repro — pure generator, zero deps ───────────────────────────
+    // No MobX, no flow(), no Babel default-param transform.
+    // Manually reads arguments[] inside a generator body.
+    // If [DEFAULT] fires → confirmed Hermes generator arguments bug.
+    runMinimal = (externalCb: (msg: string) => void) => {
+        const store = testStore
+
+        function* gen(value: string) {
+            const cb: (msg: string) => void =
+                (arguments as any).length > 1 && (arguments as any)[1] !== undefined
+                    ? (arguments as any)[1]
+                    : () => { store.log.push('  [DEFAULT called — Hermes arguments bug confirmed]') }
+            yield new Promise(resolve => setTimeout(resolve, 50))
+            store.log.push(`  arguments.length = ${(arguments as any).length}`)
+            store.log.push(`  value = "${value}"`)
+            cb('hello from generator')
+        }
+
+        const it = (gen as any)('test', externalCb)
+        const p: Promise<void> = it.next().value
+        p.then(() => it.next())
+    }
+
     clearLog = () => {
         this.log = []
     }

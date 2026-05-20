@@ -29,6 +29,17 @@ export default observer(function App() {
         })
     }
 
+    const runMinimal = () => {
+        testStore.clearLog()
+        testStore.log.push('── MINIMAL: pure generator + arguments[] ──')
+        testStore.log.push('No MobX. No flow(). No Babel transform.')
+        testStore.log.push('If [DEFAULT] fires → Hermes generator arguments bug.')
+        testStore.log.push('')
+        testStore.runMinimal((msg: string) => {
+            testStore.log.push(`⚪ EXTERNAL CB fired: "${msg}"`)
+        })
+    }
+
     const runRealFlowManualBabel = () => {
         testStore.clearLog()
         testStore.log.push('── REAL flow() + manual Babel wrapper ──')
@@ -71,6 +82,10 @@ export default observer(function App() {
                     <Text style={s.btnSub}>with ?? fallback</Text>
                 </TouchableOpacity>
             </View>
+            <TouchableOpacity style={[s.btn, s.purple]} onPress={runMinimal}>
+                <Text style={s.btnText}>▶ Run MINIMAL</Text>
+                <Text style={s.btnSub}>pure generator + arguments[] — no MobX</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[s.btn, s.blue]} onPress={runRealFlowManualBabel}>
                 <Text style={s.btnText}>▶ Run FLOW+MANUAL</Text>
                 <Text style={s.btnSub}>real flow() + hand-written arguments[]</Text>
@@ -97,6 +112,7 @@ export default observer(function App() {
                         line.includes('── BROKEN') && s.sectionBroken,
                         line.includes('── FIXED') && s.sectionFixed,
                         line.includes('── STANDALONE') && s.sectionStandalone,
+                        line.includes('── MINIMAL') && s.sectionMinimal,
                     ]}>
                         {line}
                     </Text>
@@ -123,6 +139,7 @@ const s = StyleSheet.create({
     green: { backgroundColor: '#14532d' },
     orange: { backgroundColor: '#78350f' },
     blue: { backgroundColor: '#1e3a5f' },
+    purple: { backgroundColor: '#3b1f5e' },
     btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
     btnSub: { color: '#aaa', fontSize: 11, marginTop: 2 },
     log: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 10, marginTop: 4 },
@@ -131,6 +148,7 @@ const s = StyleSheet.create({
     sectionBroken: { color: '#f87171', fontWeight: 'bold' },
     sectionFixed: { color: '#4ade80', fontWeight: 'bold' },
     sectionStandalone: { color: '#fbbf24', fontWeight: 'bold' },
+    sectionMinimal: { color: '#c084fc', fontWeight: 'bold' },
     red_text: { color: '#f87171', fontWeight: 'bold' },
     green_text: { color: '#4ade80', fontWeight: 'bold' },
     yellow_text: { color: '#fbbf24', fontWeight: 'bold' },
