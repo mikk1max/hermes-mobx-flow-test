@@ -35,9 +35,7 @@ export default observer(function App() {
         testStore.log.push('No MobX. No flow(). No Babel transform.')
         testStore.log.push('If [DEFAULT] fires → Hermes generator arguments bug.')
         testStore.log.push('')
-        testStore.runMinimal((msg: string) => {
-            testStore.log.push(`⚪ EXTERNAL CB fired: "${msg}"`)
-        })
+        testStore.runMinimal()
     }
 
     const runRealFlowManualBabel = () => {

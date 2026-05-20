@@ -107,26 +107,47 @@ export class TestStore {
     }).bind(this)
 
     // ─── MINIMAL repro — pure generator, zero deps ───────────────────────────
-    // No MobX, no flow(), no Babel default-param transform.
-    // Manually reads arguments[] inside a generator body.
-    // If [DEFAULT] fires → confirmed Hermes generator arguments bug.
-    runMinimal = (externalCb: (msg: string) => void) => {
+    // Tests three calling conventions to isolate the exact Hermes trigger:
+    //   A) direct call          gen('test', cb)               → should work
+    //   B) apply with Array     gen.apply(null, ['test', cb]) → should work
+    //   C) apply with Arguments gen.apply(null, outerArgs)    → suspected bug
+    //      (this is exactly what MobX action() does internally)
+    runMinimal = () => {
         const store = testStore
 
         function* gen(value: string) {
             const cb: (msg: string) => void =
                 (arguments as any).length > 1 && (arguments as any)[1] !== undefined
                     ? (arguments as any)[1]
-                    : () => { store.log.push('  [DEFAULT called — Hermes arguments bug confirmed]') }
+                    : () => { store.log.push('  [DEFAULT — bug!]') }
             yield new Promise(resolve => setTimeout(resolve, 50))
-            store.log.push(`  arguments.length = ${(arguments as any).length}`)
-            store.log.push(`  value = "${value}"`)
-            cb('hello from generator')
+            store.log.push(`  args.length=${(arguments as any).length}  value="${value}"`)
+            cb('ok')
         }
 
-        const it = (gen as any)('test', externalCb)
-        const p: Promise<void> = it.next().value
-        p.then(() => it.next())
+        // A) direct call
+        store.log.push('A) direct: gen("test", cb)')
+        const itA = (gen as any)('test', (msg: string) => store.log.push(`  ⚪ A fired: ${msg}`))
+        itA.next().value.then(() => {
+            itA.next()
+
+            // B) apply with real Array
+            store.log.push('B) apply + Array: gen.apply(null, ["test", cb])')
+            const itB = (gen as any).apply(null, ['test', (msg: string) => store.log.push(`  ⚪ B fired: ${msg}`)])
+            itB.next().value.then(() => {
+                itB.next()
+
+                // C) apply with arguments object — mirrors MobX action() internals
+                store.log.push('C) apply + arguments object (MobX pattern):')
+                function wrapper(this: any) {
+                    const outerArgs = arguments
+                    store.log.push(`  wrapper arguments.length = ${outerArgs.length}`)
+                    const itC = (gen as any).apply(null, outerArgs)
+                    itC.next().value.then(() => itC.next())
+                }
+                ;(wrapper as any)('test', (msg: string) => store.log.push(`  ⚪ C fired: ${msg}`))
+            })
+        })
     }
 
     clearLog = () => {
