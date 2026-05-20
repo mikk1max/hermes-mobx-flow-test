@@ -1,83 +1,72 @@
 // Standalone reproduction — no Babel, no Expo, no external libraries.
 //
-// Reproduces the exact MobX flow() + action() call chain that triggers the bug:
-//   MobX flow()  →  action(generator).apply(ctx, args)
-//                →  executeAction(fn, scope, arguments)  [action wrapper]
-//                →  fn.apply(scope, args)                [Babel wrapper reads arguments]
+// Root cause (found via systematic elimination):
+//   Hermes does not correctly expose `arguments` inside a generator body.
+//   `arguments` should capture the values from the initial generator invocation,
+//   but on Hermes it is empty (or length === 0) when the generator body runs.
 //
-// The Babel wrapper is what @babel/plugin-transform-parameters emits for:
-//   flow(function*(value, onSuccess = () => {}) { ... })
-
-// ─── Faithful MobX internals replica ────────────────────────────────────────
-
-function executeAction(fn, scope, args) {
-    return fn.apply(scope, args)
-}
-
-function action(fn) {
-    return function actionWrapper() {
-        return executeAction(fn, this, arguments)
-    }
-}
-
-function flow(generator) {
-    return function flowWrapper() {
-        var ctx = this
-        var args = arguments
-        // Real MobX line: action(name, generator).apply(ctx, args)
-        var gen = action(generator).apply(ctx, args)
-        function step(val) {
-            var r = gen.next(val)
-            if (!r.done) r.value.then(step)
-        }
-        step(undefined)
-    }
-}
-
-// ─── Test cases ──────────────────────────────────────────────────────────────
-
-// BROKEN — this is exactly what Babel emits for:
-//   flow(function*(value, onSuccess: () => void = () => {}) { ... })
+// Why this surfaces with MobX + Babel:
+//   babel-preset-expo with hermes-stable transform profile does NOT transpile
+//   generators (Hermes supports them natively), but it DOES transform default
+//   parameters. For a generator with a default param:
 //
-// @babel/plugin-transform-parameters cannot put default params directly
-// inside a generator, so it wraps it in a regular function that reads arguments[1].
-var broken = flow(function (value) {
-    var onSuccess =
+//     flow(function*(value, onSuccess = () => {}) { ... })
+//
+//   Babel cannot put default params directly inside a generator's formal params,
+//   so it moves the check into the generator body:
+//
+//     flow(function*(value) {
+//       var onSuccess = arguments.length > 1 && arguments[1] !== undefined
+//           ? arguments[1]
+//           : () => {}      // ← default fires because arguments is empty on Hermes
+//       yield ...
+//       onSuccess(...)
+//     })
+//
+//   On V8/JSC `arguments` inside a generator correctly captures the invocation
+//   arguments. On Hermes it does not → the default always fires.
+
+// ─── Minimal repro — zero dependencies ──────────────────────────────────────
+
+function* gen(value) {
+    // `arguments` should be ['test', externalCb] — set when gen() was called.
+    // On Hermes, arguments.length === 0 → default fires instead of externalCb.
+    var cb =
         arguments.length > 1 && arguments[1] !== undefined
             ? arguments[1]
-            : function () { print('  [DEFAULT called — bug present]') }
-    return (function* () {
-        yield new Promise(function (r) { setTimeout(r, 0) })
-        onSuccess('hello from generator')
-    })()
-})
+            : function () { print('  [DEFAULT called — Hermes arguments bug]') }
 
-// FIXED — optional param + nullish coalescing stays as a genuine generator.
-// Babel does NOT wrap this in a regular function, so arguments is never read.
-var fixed = flow(function* (value, onSuccess) {
-    onSuccess = onSuccess != null ? onSuccess : function () {}
     yield new Promise(function (r) { setTimeout(r, 0) })
-    onSuccess('hello from generator')
-})
+    cb('hello from generator, value=' + value)
+}
 
-// ─── Run ─────────────────────────────────────────────────────────────────────
+print('--- MINIMAL: arguments inside generator body ---')
+var it = gen('test', function (msg) { print('  [EXTERNAL cb fired: ' + msg + ']') })
+it.next().value.then(function () { it.next() })
 
-print('--- BROKEN (Babel default param pattern + MobX action chain) ---')
-broken('test', function (msg) { print('  [EXTERNAL cb fired: ' + msg + ']') })
+// ─── Confirmation: arguments works fine in a regular function ────────────────
+
+function regular(value) {
+    var cb =
+        arguments.length > 1 && arguments[1] !== undefined
+            ? arguments[1]
+            : function () { print('  [DEFAULT called]') }
+    cb('hello from regular, value=' + value)
+}
 
 setTimeout(function () {
-    print('--- FIXED (genuine generator, no arguments-based detection) ---')
-    fixed('test', function (msg) { print('  [EXTERNAL cb fired: ' + msg + ']') })
-}, 50)
+    print('--- CONTROL: arguments inside regular function (should always work) ---')
+    regular('test', function (msg) { print('  [EXTERNAL cb fired: ' + msg + ']') })
+}, 100)
 
-// Expected on any engine:
-//   --- BROKEN ---
+// ─── Expected output on any engine ──────────────────────────────────────────
+//   --- MINIMAL: arguments inside generator body ---
 //   [EXTERNAL cb fired: hello from generator]
-//   --- FIXED ---
-//   [EXTERNAL cb fired: hello from generator]
+//   --- CONTROL: arguments inside regular function (should always work) ---
+//   [EXTERNAL cb fired: hello from regular]
 //
-// Actual on Hermes (Android arm64):
-//   --- BROKEN ---
-//   [DEFAULT called — bug present]          ← external cb silently replaced
-//   --- FIXED ---
-//   [EXTERNAL cb fired: hello from generator]
+// ─── Actual output on Hermes (Android arm64 / iOS) ──────────────────────────
+//   --- MINIMAL: arguments inside generator body ---
+//   [DEFAULT called — Hermes arguments bug]   ← arguments.length === 0
+//   --- CONTROL: arguments inside regular function (should always work) ---
+//   [EXTERNAL cb fired: hello from regular]   ← works fine
