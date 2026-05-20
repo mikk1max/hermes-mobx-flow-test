@@ -9,6 +9,9 @@ const emptyCallback = () => {}
 //           → fn.apply(scope, args)  ← Babel wrapper reads arguments here
 
 function standaloneExecuteAction(fn: Function, scope: any, args: IArguments) {
+    // Mirrors MobX's _startAction which calls Array.from(args) before fn.apply.
+    // Hypothesis: Hermes invalidates the arguments object after Array.from().
+    Array.from(args)
     return fn.apply(scope, args)
 }
 
