@@ -29,13 +29,24 @@ export default observer(function App() {
         })
     }
 
+    const runRealFlowManualBabel = () => {
+        testStore.clearLog()
+        testStore.log.push('── REAL flow() + manual Babel wrapper ──')
+        testStore.log.push('Real MobX flow(), but arguments[] written by hand (not TS compiled).')
+        testStore.log.push('If bug fires → MobX flow() is the trigger, not TS/Babel.')
+        testStore.log.push('')
+        ;(testStore.runRealFlowManualBabel as any)('hello', (msg: string) => {
+            testStore.log.push(`🔵 EXTERNAL CB fired: "${msg}"`)
+        })
+    }
+
     const runStandalone = () => {
         testStore.clearLog()
         testStore.log.push('── STANDALONE: no MobX, manual action() chain ──')
         testStore.log.push('Same Babel pattern, but MobX replaced by manual replica.')
         testStore.log.push('If bug fires here → Hermes issue, NOT a MobX issue.')
         testStore.log.push('')
-        testStore.runStandaloneBroken('hello', (msg: string) => {
+        ;(testStore.runStandaloneBroken as any)('hello', (msg: string) => {
             testStore.log.push(`🟡 EXTERNAL CB fired: "${msg}"`)
         })
     }
@@ -60,6 +71,10 @@ export default observer(function App() {
                     <Text style={s.btnSub}>with ?? fallback</Text>
                 </TouchableOpacity>
             </View>
+            <TouchableOpacity style={[s.btn, s.blue]} onPress={runRealFlowManualBabel}>
+                <Text style={s.btnText}>▶ Run FLOW+MANUAL</Text>
+                <Text style={s.btnSub}>real flow() + hand-written arguments[]</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[s.btn, s.orange]} onPress={runStandalone}>
                 <Text style={s.btnText}>▶ Run STANDALONE</Text>
                 <Text style={s.btnSub}>no MobX — manual action() chain</Text>
@@ -107,6 +122,7 @@ const s = StyleSheet.create({
     red: { backgroundColor: '#7f1d1d' },
     green: { backgroundColor: '#14532d' },
     orange: { backgroundColor: '#78350f' },
+    blue: { backgroundColor: '#1e3a5f' },
     btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
     btnSub: { color: '#aaa', fontSize: 11, marginTop: 2 },
     log: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 10, marginTop: 4 },

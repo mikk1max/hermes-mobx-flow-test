@@ -32,6 +32,7 @@ export class TestStore {
             runBroken: flow,
             runFixed: flow,
             runStandaloneBroken: flow,
+            runRealFlowManualBabel: flow,
         })
     }
 
@@ -84,6 +85,26 @@ export class TestStore {
             testStore.log.push(`  standalone done.`)
         })()
     })
+
+    // ─── REAL MobX flow() + manually-written Babel wrapper ───────────────────
+    // Tests if MobX flow() itself is the trigger, independent of TypeScript
+    // compiling "= () => {}" default params.
+    // If this reproduces the bug → issue is in MobX flow() + Hermes (not TS/Babel).
+    // If not → TypeScript compilation of default params is the specific trigger.
+    runRealFlowManualBabel = flow(function (value: string) {
+        const onSuccess =
+            arguments.length > 1 && arguments[1] !== undefined
+                ? (arguments[1] as (msg: string) => void)
+                : () => { testStore.log.push('  [DEFAULT called — bug present]') }
+        return (function* () {
+            yield new Promise(resolve => setTimeout(resolve, 50))
+            testStore.log.push(`  inside flow+manual:  value = "${value}"`)
+            testStore.log.push(`  inside flow+manual:  typeof onSuccess = ${typeof onSuccess}`)
+            testStore.log.push(`  calling onSuccess("I am the external callback")...`)
+            onSuccess('I am the external callback')
+            testStore.log.push(`  flow+manual done.`)
+        })()
+    }).bind(this)
 
     clearLog = () => {
         this.log = []
