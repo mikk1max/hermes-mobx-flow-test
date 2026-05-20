@@ -1,34 +1,23 @@
-import { flow, makeObservable, observable } from 'mobx'
+import { action, flow, makeObservable, observable } from 'mobx'
 
 const emptyCallback = () => {}
 
-// ─── Standalone MobX replica (no MobX dependency) ────────────────────────────
-// Mirrors the exact internal call chain from repro.js:
-//   flow() → action(generator).apply(ctx, args)
-//           → executeAction(fn, scope, arguments)
-//           → fn.apply(scope, args)  ← Babel wrapper reads arguments here
-
-function standaloneExecuteAction(fn: Function, scope: any, args: IArguments) {
-    // Mirrors MobX's _startAction which calls Array.from(args) before fn.apply.
-    // Hypothesis: Hermes invalidates the arguments object after Array.from().
-    Array.from(args)
-    return fn.apply(scope, args)
-}
-
-function standaloneAction(fn: Function) {
-    return function actionWrapper(this: any) {
-        return standaloneExecuteAction(fn, this, arguments)
-    }
-}
+// ─── Standalone flow replica using REAL MobX action() ────────────────────────
+// Uses the real MobX action() (with _startAction/_endAction and all side effects)
+// but replaces flow() with our own minimal implementation.
+// If this reproduces the bug → the issue is in action() + Hermes interaction.
+// If not → the issue is in flow()'s specific calling pattern or makeObservable.
 
 function standaloneFlow(generator: Function) {
     return function flowWrapper(this: any) {
         const ctx = this
         const args = arguments
-        const gen: Generator = (standaloneAction(generator) as Function).apply(ctx, args)
+        // Use REAL MobX action() here, not our replica
+        const gen: Generator = (action('standalone-flow-init', generator) as Function).apply(ctx, args)
         function step(val: any) {
-            const r = gen.next(val)
-            if (!r.done) (r.value as Promise<any>).then(step)
+            // Also wrap gen.next in real MobX action(), just like MobX flow() does
+            const r = (action('standalone-flow-yield', (gen as any).next) as Function).call(gen, val)
+            if (!r.done) Promise.resolve(r.value).then(step)
         }
         step(undefined)
     }
