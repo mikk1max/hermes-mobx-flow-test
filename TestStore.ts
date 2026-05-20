@@ -143,13 +143,23 @@ export class TestStore {
             ;(flowedE as any)('test', extCb('E'))
 
             setTimeout(() => {
-                // F) same as BROKEN — through MobX flow() WITH `this: TestStore`
-                store.log.push('F) Babel default param, via MobX flow() WITH this: (= BROKEN pattern):')
+                // F) flow() WITH `this: TestStore` AND .bind(this)
+                store.log.push('F) flow() + this: TypeScript + .bind(this):')
                 const flowedF = flow(function* (this: TestStore, _value: string, onSuccess: (msg: string) => void = defFn('F')) {
                     yield new Promise(resolve => setTimeout(resolve, 50))
                     onSuccess('ok')
                 }).bind(this)
                 ;(flowedF as any)('test', extCb('F'))
+
+                setTimeout(() => {
+                    // G) flow() WITHOUT `this:` BUT WITH .bind(this) — isolates .bind() as the trigger
+                    store.log.push('G) flow() + NO this: + .bind(this) — is .bind() the trigger?')
+                    const flowedG = flow(function* (_value: string, onSuccess: (msg: string) => void = defFn('G')) {
+                        yield new Promise(resolve => setTimeout(resolve, 50))
+                        onSuccess('ok')
+                    }).bind(this)
+                    ;(flowedG as any)('test', extCb('G'))
+                }, 400)
             }, 200)
         })
     }
