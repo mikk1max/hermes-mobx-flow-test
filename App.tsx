@@ -29,6 +29,17 @@ export default observer(function App() {
         })
     }
 
+    const runStandalone = () => {
+        testStore.clearLog()
+        testStore.log.push('── STANDALONE: no MobX, manual action() chain ──')
+        testStore.log.push('Same Babel pattern, but MobX replaced by manual replica.')
+        testStore.log.push('If bug fires here → Hermes issue, NOT a MobX issue.')
+        testStore.log.push('')
+        testStore.runStandaloneBroken('hello', (msg: string) => {
+            testStore.log.push(`🟡 EXTERNAL CB fired: "${msg}"`)
+        })
+    }
+
     return (
         <View style={s.container}>
             <Text style={s.title}>MobX flow() + Hermes default param bug</Text>
@@ -49,6 +60,10 @@ export default observer(function App() {
                     <Text style={s.btnSub}>with ?? fallback</Text>
                 </TouchableOpacity>
             </View>
+            <TouchableOpacity style={[s.btn, s.orange]} onPress={runStandalone}>
+                <Text style={s.btnText}>▶ Run STANDALONE</Text>
+                <Text style={s.btnSub}>no MobX — manual action() chain</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={s.clearBtn} onPress={() => testStore.clearLog()}>
                 <Text style={s.clearBtnText}>Clear</Text>
             </TouchableOpacity>
@@ -60,10 +75,13 @@ export default observer(function App() {
                 {testStore.log.map((line, i) => (
                     <Text key={i} style={[
                         s.line,
-                        line.startsWith('🔴') && s.externalFired,
-                        line.startsWith('🟢') && s.success,
+                        line.startsWith('🔴') && s.red_text,
+                        line.startsWith('🟢') && s.green_text,
+                        line.startsWith('🟡') && s.yellow_text,
+                        line.includes('[DEFAULT') && s.red_text,
                         line.includes('── BROKEN') && s.sectionBroken,
                         line.includes('── FIXED') && s.sectionFixed,
+                        line.includes('── STANDALONE') && s.sectionStandalone,
                     ]}>
                         {line}
                     </Text>
@@ -71,8 +89,9 @@ export default observer(function App() {
             </ScrollView>
 
             <View style={s.verdict}>
-                <Text style={s.verdictTitle}>If BROKEN: external cb never appears below "flow done"</Text>
-                <Text style={s.verdictTitle}>If FIXED: 🟢 EXTERNAL CB fired appears</Text>
+                <Text style={s.verdictTitle}>BROKEN: external cb never appears → [DEFAULT called]</Text>
+                <Text style={s.verdictTitle}>FIXED: 🟢 EXTERNAL CB fired appears</Text>
+                <Text style={s.verdictTitle}>STANDALONE: if [DEFAULT] → Hermes bug, not MobX</Text>
             </View>
         </View>
     )
@@ -84,18 +103,21 @@ const s = StyleSheet.create({
     sub: { color: '#888', fontSize: 12, marginTop: 2, marginBottom: 8 },
     desc: { color: '#aaa', fontSize: 12, lineHeight: 18, marginBottom: 12, backgroundColor: '#1a1a1a', padding: 10, borderRadius: 8 },
     row: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-    btn: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 8, padding: 12 },
+    btn: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 8, padding: 12, marginBottom: 8 },
     red: { backgroundColor: '#7f1d1d' },
     green: { backgroundColor: '#14532d' },
+    orange: { backgroundColor: '#78350f' },
     btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
     btnSub: { color: '#aaa', fontSize: 11, marginTop: 2 },
-    log: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 10, marginTop: 8 },
+    log: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 10, marginTop: 4 },
     empty: { color: '#444', fontStyle: 'italic', fontSize: 12 },
     line: { color: '#bbb', fontSize: 12, fontFamily: 'monospace', marginBottom: 3 },
     sectionBroken: { color: '#f87171', fontWeight: 'bold' },
     sectionFixed: { color: '#4ade80', fontWeight: 'bold' },
-    externalFired: { color: '#f87171', fontWeight: 'bold' },
-    success: { color: '#4ade80', fontWeight: 'bold' },
+    sectionStandalone: { color: '#fbbf24', fontWeight: 'bold' },
+    red_text: { color: '#f87171', fontWeight: 'bold' },
+    green_text: { color: '#4ade80', fontWeight: 'bold' },
+    yellow_text: { color: '#fbbf24', fontWeight: 'bold' },
     clearBtn: { alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 6, backgroundColor: '#2a2a2a', borderRadius: 6, marginBottom: 4 },
     clearBtnText: { color: '#aaa', fontSize: 12 },
     verdict: { marginTop: 8, marginBottom: 8, padding: 10, backgroundColor: '#1a1a1a', borderRadius: 8 },
