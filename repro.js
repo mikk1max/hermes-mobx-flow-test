@@ -1,72 +1,66 @@
-// Standalone reproduction — no Babel, no Expo, no external libraries.
+// Reproduction — identifies the root cause of the MobX flow() + Hermes default param bug.
 //
-// Root cause (found via systematic elimination):
-//   Hermes does not correctly expose `arguments` inside a generator body.
-//   `arguments` should capture the values from the initial generator invocation,
-//   but on Hermes it is empty (or length === 0) when the generator body runs.
+// ─── Root cause ──────────────────────────────────────────────────────────────
 //
-// Why this surfaces with MobX + Babel:
-//   babel-preset-expo with hermes-stable transform profile does NOT transpile
-//   generators (Hermes supports them natively), but it DOES transform default
-//   parameters. For a generator with a default param:
+// NOT a Hermes engine bug. A Babel plugin ordering bug in babel-preset-expo
+// (hermes-stable transform profile):
 //
-//     flow(function*(value, onSuccess = () => {}) { ... })
+//   @babel/plugin-transform-parameters  runs BEFORE  @babel/preset-typescript
 //
-//   Babel cannot put default params directly inside a generator's formal params,
-//   so it moves the check into the generator body:
+// When Babel sees a generator with a TypeScript `this:` pseudo-parameter AND a
+// default parameter:
 //
-//     flow(function*(value) {
-//       var onSuccess = arguments.length > 1 && arguments[1] !== undefined
-//           ? arguments[1]
-//           : () => {}      // ← default fires because arguments is empty on Hermes
-//       yield ...
-//       onSuccess(...)
-//     })
+//   function*(this: TestStore, value: string, onSuccess = () => {}) { ... }
 //
-//   On V8/JSC `arguments` inside a generator correctly captures the invocation
-//   arguments. On Hermes it does not → the default always fires.
-
-// ─── Minimal repro — zero dependencies ──────────────────────────────────────
-
-function* gen(value) {
-    // `arguments` should be ['test', externalCb] — set when gen() was called.
-    // On Hermes, arguments.length === 0 → default fires instead of externalCb.
-    var cb =
-        arguments.length > 1 && arguments[1] !== undefined
-            ? arguments[1]
-            : function () { print('  [DEFAULT called — Hermes arguments bug]') }
-
-    yield new Promise(function (r) { setTimeout(r, 0) })
-    cb('hello from generator, value=' + value)
-}
-
-print('--- MINIMAL: arguments inside generator body ---')
-var it = gen('test', function (msg) { print('  [EXTERNAL cb fired: ' + msg + ']') })
-it.next().value.then(function () { it.next() })
-
-// ─── Confirmation: arguments works fine in a regular function ────────────────
-
-function regular(value) {
-    var cb =
-        arguments.length > 1 && arguments[1] !== undefined
-            ? arguments[1]
-            : function () { print('  [DEFAULT called]') }
-    cb('hello from regular, value=' + value)
-}
-
-setTimeout(function () {
-    print('--- CONTROL: arguments inside regular function (should always work) ---')
-    regular('test', function (msg) { print('  [EXTERNAL cb fired: ' + msg + ']') })
-}, 100)
-
-// ─── Expected output on any engine ──────────────────────────────────────────
-//   --- MINIMAL: arguments inside generator body ---
-//   [EXTERNAL cb fired: hello from generator]
-//   --- CONTROL: arguments inside regular function (should always work) ---
-//   [EXTERNAL cb fired: hello from regular]
+// it counts `this:` as argument index 0, shifting `onSuccess` to index 2:
 //
-// ─── Actual output on Hermes (Android arm64 / iOS) ──────────────────────────
-//   --- MINIMAL: arguments inside generator body ---
-//   [DEFAULT called — Hermes arguments bug]   ← arguments.length === 0
-//   --- CONTROL: arguments inside regular function (should always work) ---
-//   [EXTERNAL cb fired: hello from regular]   ← works fine
+//   function*(_value) {
+//     var onSuccess =
+//       arguments.length > 2 && arguments[2] !== undefined  // ← should be > 1 / [1]
+//         ? arguments[2]
+//         : () => {}
+//   }
+//
+// TypeScript then strips `this:` from the formal params, but the arguments
+// check is already wrong.  Calling with 2 real args → arguments.length = 2 →
+// `> 2` is false → default always fires.
+//
+// The bug appears Hermes-specific because:
+//   - Web/V8 Babel config: preserves native default param syntax — V8 never
+//     sees the broken arguments[] check.
+//   - iOS/Android Hermes Babel config (hermes-stable): transforms default
+//     params to arguments[] checks — Hermes receives the incorrectly compiled
+//     bytecode.
+//
+// ─── Proof ───────────────────────────────────────────────────────────────────
+//
+// Empirical test matrix (Expo RN app, Hermes on iOS):
+//
+//   D) flow(function*(_v, onSuccess = def))          direct call    → OK
+//   E) flow(function*(_v, onSuccess = def))          via flow()     → OK
+//   F) flow(function*(this:T, _v, onSuccess = def))  via flow()+bind → BROKEN  ← this: shifts index
+//   G) flow(function*(_v, onSuccess = def))          via flow()+bind → OK      ← no this:, no shift
+//   H) same as F, but called with 3 args             via flow()+bind → OK      ← arg lands at [2]
+//
+// H is the smoking gun: passing the callback as the THIRD argument (index 2)
+// fixes the bug, proving Babel generated arguments[2] instead of arguments[1].
+//
+// ─── Fix ─────────────────────────────────────────────────────────────────────
+//
+// Replace default param syntax with an explicit nullish-coalescing fallback:
+//
+//   BROKEN:  function*(this: T, value, onSuccess = () => {}) { ... }
+//   FIXED:   function*(this: T, value, onSuccess?: () => void) {
+//                onSuccess = onSuccess ?? () => {}
+//                ...
+//            }
+//
+// This avoids the default param transform entirely; TypeScript/Babel never
+// emit the broken arguments[] check.
+//
+// ─── Where to file ───────────────────────────────────────────────────────────
+//
+// @babel/plugin-transform-parameters should not count TypeScript's `this:`
+// pseudo-parameter when computing argument indices for default param checks.
+// File against: babel-preset-expo  OR  @babel/plugin-transform-parameters
+//   (when composed with @babel/preset-typescript / @babel/plugin-transform-typescript)
