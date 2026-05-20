@@ -114,39 +114,36 @@ export class TestStore {
     //      (this is exactly what MobX action() does internally)
     runMinimal = () => {
         const store = testStore
+        const defFn = (label: string) => () => store.log.push(`  [DEFAULT ${label}]`)
+        const extCb = (label: string) => (msg: string) => store.log.push(`  ⚪ ${label} fired: ${msg}`)
 
-        function* gen(value: string) {
-            const cb: (msg: string) => void =
-                (arguments as any).length > 1 && (arguments as any)[1] !== undefined
-                    ? (arguments as any)[1]
-                    : () => { store.log.push('  [DEFAULT — bug!]') }
+        // D) Babel compiles "= () => {}" inside a generator — direct call, no MobX
+        store.log.push('D) Babel default param, direct call (no MobX):')
+        function* genD(_value: string, onSuccess: (msg: string) => void = defFn('D')) {
             yield new Promise(resolve => setTimeout(resolve, 50))
-            store.log.push(`  args.length=${(arguments as any).length}  value="${value}"`)
-            cb('ok')
+            onSuccess('ok')
         }
+        const itD = (genD as any)('test', extCb('D'))
+        itD.next().value.then(() => {
+            itD.next()
 
-        // A) direct call
-        store.log.push('A) direct: gen("test", cb)')
-        const itA = (gen as any)('test', (msg: string) => store.log.push(`  ⚪ A fired: ${msg}`))
-        itA.next().value.then(() => {
-            itA.next()
-
-            // B) apply with real Array
-            store.log.push('B) apply + Array: gen.apply(null, ["test", cb])')
-            const itB = (gen as any).apply(null, ['test', (msg: string) => store.log.push(`  ⚪ B fired: ${msg}`)])
-            itB.next().value.then(() => {
-                itB.next()
-
-                // C) apply with arguments object — mirrors MobX action() internals
-                store.log.push('C) apply + arguments object (MobX pattern):')
-                function wrapper(this: any) {
-                    const outerArgs = arguments
-                    store.log.push(`  wrapper arguments.length = ${outerArgs.length}`)
-                    const itC = (gen as any).apply(null, outerArgs)
-                    itC.next().value.then(() => itC.next())
-                }
-                ;(wrapper as any)('test', (msg: string) => store.log.push(`  ⚪ C fired: ${msg}`))
+            // E) same generator through real MobX flow() — no `this:` param
+            store.log.push('E) Babel default param, via MobX flow() (no this:):')
+            const flowedE = flow(function* (_value: string, onSuccess: (msg: string) => void = defFn('E')) {
+                yield new Promise(resolve => setTimeout(resolve, 50))
+                onSuccess('ok')
             })
+            ;(flowedE as any)('test', extCb('E'))
+
+            setTimeout(() => {
+                // F) same as BROKEN — through MobX flow() WITH `this: TestStore`
+                store.log.push('F) Babel default param, via MobX flow() WITH this: (= BROKEN pattern):')
+                const flowedF = flow(function* (this: TestStore, _value: string, onSuccess: (msg: string) => void = defFn('F')) {
+                    yield new Promise(resolve => setTimeout(resolve, 50))
+                    onSuccess('ok')
+                }).bind(this)
+                ;(flowedF as any)('test', extCb('F'))
+            }, 200)
         })
     }
 
