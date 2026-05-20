@@ -162,6 +162,19 @@ export class TestStore {
                     }).bind(this)
                     ;(flowedG as any)('test', extCb('G'))
                 }, 400)
+
+                setTimeout(() => {
+                    // H) F but called with 3 args: ('test', undefined, extCb)
+                    // If Babel shifted onSuccess to arguments[2] due to `this:`,
+                    // passing extCb at index 2 should fix it → confirms index-shift theory
+                    store.log.push('H) F called with 3 args (skip arg[1], put cb at arg[2]):')
+                    store.log.push('   if H fires → Babel shifted onSuccess to arguments[2]')
+                    const flowedH = flow(function* (this: TestStore, _value: string, onSuccess: (msg: string) => void = defFn('H')) {
+                        yield new Promise(resolve => setTimeout(resolve, 50))
+                        onSuccess('ok')
+                    }).bind(this)
+                    ;(flowedH as any)('test', undefined, extCb('H'))
+                }, 600)
             }, 200)
         })
     }
