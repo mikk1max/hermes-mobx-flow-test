@@ -62,39 +62,30 @@ export default observer(function App() {
 
     return (
         <View style={s.container}>
-            <Text style={s.title}>MobX flow() + Hermes default param bug</Text>
-            <Text style={s.sub}>Engine: {engine}  |  Platform: {Platform.OS}</Text>
-            <Text style={s.desc}>
-                We pass an external callback to a MobX flow().{'\n'}
-                If the bug is present — the external callback never fires.{'\n'}
-                Only the default {"() => {}"} runs silently instead.
-            </Text>
+            <Text style={s.title}>MobX flow() + Hermes  <Text style={s.sub}>{engine} · {Platform.OS}</Text></Text>
 
             <View style={s.row}>
                 <TouchableOpacity style={[s.btn, s.red]} onPress={runBroken}>
-                    <Text style={s.btnText}>▶ Run BROKEN</Text>
-                    <Text style={s.btnSub}>with default param</Text>
+                    <Text style={s.btnText}>BROKEN</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.btn, s.green]} onPress={runFixed}>
-                    <Text style={s.btnText}>▶ Run FIXED</Text>
-                    <Text style={s.btnSub}>with ?? fallback</Text>
+                    <Text style={s.btnText}>FIXED</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.btn, s.purple]} onPress={runMinimal}>
+                    <Text style={s.btnText}>MINIMAL</Text>
                 </TouchableOpacity>
             </View>
-            <TouchableOpacity style={[s.btn, s.purple]} onPress={runMinimal}>
-                <Text style={s.btnText}>▶ Run MINIMAL</Text>
-                <Text style={s.btnSub}>pure generator + arguments[] — no MobX</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.btn, s.blue]} onPress={runRealFlowManualBabel}>
-                <Text style={s.btnText}>▶ Run FLOW+MANUAL</Text>
-                <Text style={s.btnSub}>real flow() + hand-written arguments[]</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.btn, s.orange]} onPress={runStandalone}>
-                <Text style={s.btnText}>▶ Run STANDALONE</Text>
-                <Text style={s.btnSub}>no MobX — manual action() chain</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.clearBtn} onPress={() => testStore.clearLog()}>
-                <Text style={s.clearBtnText}>Clear</Text>
-            </TouchableOpacity>
+            <View style={s.row}>
+                <TouchableOpacity style={[s.btn, s.blue]} onPress={runRealFlowManualBabel}>
+                    <Text style={s.btnText}>FLOW+MANUAL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.btn, s.orange]} onPress={runStandalone}>
+                    <Text style={s.btnText}>STANDALONE</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.btn, s.dark]} onPress={() => testStore.clearLog()}>
+                    <Text style={s.btnText}>CLEAR</Text>
+                </TouchableOpacity>
+            </View>
 
             <ScrollView style={s.log}>
                 {testStore.log.length === 0 && (
@@ -116,31 +107,26 @@ export default observer(function App() {
                     </Text>
                 ))}
             </ScrollView>
-
-            <View style={s.verdict}>
-                <Text style={s.verdictTitle}>BROKEN: external cb never appears → [DEFAULT called]</Text>
-                <Text style={s.verdictTitle}>FIXED: 🟢 EXTERNAL CB fired appears</Text>
-                <Text style={s.verdictTitle}>STANDALONE: if [DEFAULT] → Hermes bug, not MobX</Text>
-            </View>
         </View>
     )
 })
 
 const s = StyleSheet.create({
-    container: { flex: 1, paddingTop: 56, paddingHorizontal: 16, paddingBottom: Platform.OS === 'android' ? 48 : 24, backgroundColor: '#0d0d0d' },
-    title: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
-    sub: { color: '#888', fontSize: 12, marginTop: 2, marginBottom: 8 },
+    container: { flex: 1, paddingTop: 52, paddingHorizontal: 12, paddingBottom: Platform.OS === 'android' ? 48 : 16, backgroundColor: '#0d0d0d' },
+    title: { color: '#fff', fontSize: 13, fontWeight: 'bold', marginBottom: 6 },
+    sub: { color: '#666', fontSize: 11, fontWeight: 'normal' },
     desc: { color: '#aaa', fontSize: 12, lineHeight: 18, marginBottom: 12, backgroundColor: '#1a1a1a', padding: 10, borderRadius: 8 },
-    row: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-    btn: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 8, padding: 12, marginBottom: 8 },
+    row: { flexDirection: 'row', gap: 6, marginBottom: 0 },
+    btn: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 8, padding: 8, marginBottom: 6 },
+    dark: { backgroundColor: '#2a2a2a' },
     red: { backgroundColor: '#7f1d1d' },
     green: { backgroundColor: '#14532d' },
     orange: { backgroundColor: '#78350f' },
     blue: { backgroundColor: '#1e3a5f' },
     purple: { backgroundColor: '#3b1f5e' },
-    btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+    btnText: { color: '#fff', fontWeight: 'bold', fontSize: 11, textAlign: 'center' },
     btnSub: { color: '#aaa', fontSize: 11, marginTop: 2 },
-    log: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 10, marginTop: 4 },
+    log: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 10, marginTop: 6 },
     empty: { color: '#444', fontStyle: 'italic', fontSize: 12 },
     line: { color: '#bbb', fontSize: 12, fontFamily: 'monospace', marginBottom: 3 },
     sectionBroken: { color: '#f87171', fontWeight: 'bold' },
