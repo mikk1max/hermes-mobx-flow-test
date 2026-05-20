@@ -31,6 +31,7 @@ export class TestStore {
             log: observable,
             runBroken: flow,
             runFixed: flow,
+            runStandaloneBroken: flow,
         })
     }
 
